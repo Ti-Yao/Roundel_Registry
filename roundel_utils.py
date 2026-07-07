@@ -879,12 +879,22 @@ def mask_editor_view():
         else:
             if 'canvas' not in st.session_state:
                 st.session_state['canvas'] = {
-                    'canvas_key': f'editor_{d}',
                     'previous_d': d,
-                    'previous_objects': []
+                    'previous_objects': [],
+                    'previous_sig': None,
                 }
 
-            canvas_result = st_canvas(
+            # STABLE key (no d): the canvas never remounts on slice change, which
+            # was the cause of the blank canvas. Strokes are cleared via
+            # initial_drawing (below) instead of by changing the key.
+            canvas_key = f'editor_{ventricle}'
+
+            # Clear strokes when the slice/frame changes WITHOUT remounting.
+            sig = (d, idx)
+            force_empty = st.session_state['canvas'].get('previous_sig') != sig
+            st.session_state['canvas']['previous_sig'] = sig
+
+            _canvas_kwargs = dict(
                 stroke_width=stroke_width,
                 stroke_color=stroke_color,
                 background_image=get_overlay(image_slice, mask_slice, H, W, N, OVERLAY_COLORS, ventricle),
@@ -892,23 +902,19 @@ def mask_editor_view():
                 height=DISPLAY_H,
                 width=DISPLAY_W,
                 drawing_mode='freedraw',
-                key=st.session_state['canvas']['canvas_key'] + ventricle
+                key=canvas_key,
             )
+            if force_empty:
+                _canvas_kwargs['initial_drawing'] = {"version": "4.4.0", "objects": []}
+
+            canvas_result = st_canvas(**_canvas_kwargs)
 
 
             current_objects = []
             if canvas_result is not None and canvas_result.json_data is not None:
                 current_objects = canvas_result.json_data.get("objects", [])
 
-            if (
-                d != st.session_state['canvas']['previous_d']
-                and st.session_state['canvas']['previous_objects']
-            ):
-                st.session_state['canvas']['canvas_key'] = f'editor_{d}'
-                st.session_state['canvas']['previous_d'] = d
-                st.session_state['canvas']['previous_objects'] = []
-                st.rerun()
-
+            st.session_state['canvas']['previous_d'] = d
             st.session_state['canvas']['previous_objects'] = current_objects
 
             col1, col2= st.columns([1, 0.3])
